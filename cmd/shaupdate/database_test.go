@@ -116,7 +116,7 @@ func Test_findDuplicates(t *testing.T) {
 		return
 	}
 
-	dup, err := findDuplicates(db)
+	dup, err := findDuplicatePartialHashes(db)
 	if err != nil {
 		t.Error(err)
 		return

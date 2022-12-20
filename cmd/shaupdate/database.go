@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 )
@@ -26,7 +27,6 @@ func openDatabase(dbPath string) *sql.DB {
 
 func createDatabase(dbPath string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", dbPath)
-
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +41,12 @@ CREATE TABLE files(
 	_, err = db.Exec(sts)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute create database : %w", err)
 	}
 
 	err = createIndex(db)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute create index : %w", err)
 	}
 
 	return db, nil
@@ -166,7 +166,7 @@ func updateCompleteHash(db *sql.DB, filePath string, hash string) error {
 	return nil
 }
 
-func findDuplicates(db *sql.DB) ([]*File, error) {
+func findDuplicatePartialHashes(db *sql.DB) ([]*File, error) {
 	SQL := `
 SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
 	SELECT hashPartial
@@ -175,7 +175,22 @@ SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
 	HAVING COUNT(*) > 1
 );
 `
+	return findDuplicates(db, SQL)
+}
 
+func findDuplicateCompleteHashes(db *sql.DB) ([]*File, error) {
+	SQL := `
+SELECT filePath, hashPartial, hashComplete FROM files WHERE hashComplete <> "" AND hashComplete in (
+	SELECT hashComplete
+	FROM files
+	GROUP BY hashComplete
+	HAVING COUNT(*) > 1
+);
+`
+	return findDuplicates(db, SQL)
+}
+
+func findDuplicates(db *sql.DB, SQL string) ([]*File, error) {
 	stm, err := db.Prepare(SQL)
 	if err != nil {
 		return nil, err

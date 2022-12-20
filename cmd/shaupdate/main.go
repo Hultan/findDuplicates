@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 
@@ -33,6 +32,8 @@ type File struct {
 	HashComplete string
 	HashPartial  string
 }
+
+const dbPath = "/home/per/files.db"
 
 // USAGE
 //
@@ -69,11 +70,67 @@ func main() {
 	os.Exit(0)
 }
 
-func listDuplicatesMode(hash HashType) {
-	// findDuplicates(db)
+func listDuplicatesMode(hashMode HashType) {
+	db := openDatabase(dbPath)
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
+
+	var mode string
+	var err error
+	var dup []*File
+
+	if hashMode == PartialHash {
+		mode = "partial"
+		dup, err = findDuplicatePartialHashes(db)
+	} else {
+		mode = "complete"
+		dup, err = findDuplicateCompleteHashes(db)
+	}
+
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates (%s) ! Reason = %s", mode, err)
+		os.Exit(1)
+	}
+
+	fmt.Println()
+	fmt.Println("============================")
+	fmt.Printf(" Duplicates (mode=%s)\n", mode)
+	fmt.Println("============================")
+	for _, file := range dup {
+		if hashMode == PartialHash {
+			fmt.Printf("%s\t%s\n", file.HashPartial, file.Path)
+		} else {
+			fmt.Printf("%s\t%s\n", file.HashComplete, file.Path)
+		}
+	}
 }
 
 func completeHashMode() {
+	db := openDatabase(dbPath)
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
+
+	dup, err := findDuplicatePartialHashes(db)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates (partial) ! Reason = %s\n", err)
+		os.Exit(1)
+	}
+
+	hash := ""
+	for _, file := range dup {
+		hash, err = calculateHash(file.Path, CompleteHash)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to calculate complete hash for file '%s' ! Reason = %s\n", file.Path, err)
+			continue
+		}
+		err = updateCompleteHash(db, file.Path, hash)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to update complete hash for file '%s' ! Reason = %s\n", file.Path, err)
+			continue
+		}
+	}
 	// sort.Slice(
 	// 	files, func(i, j int) bool {
 	// 		return files[i].HashPartial < files[j].HashPartial
@@ -97,7 +154,6 @@ func completeHashMode() {
 }
 
 func partialHashMode() {
-	dbPath := verifyDatabaseExists()
 	scanPath := verifyScanPathExists()
 
 	db := openDatabase(dbPath)
@@ -105,20 +161,23 @@ func partialHashMode() {
 		_ = db.Close()
 	}(db)
 
-	fileNames, err := scanDirectoryForFileNames(scanPath, ".go$")
+	fileNames, err := scanDirectoryForFileNames(scanPath, ".mp4$")
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "scanDirectoryForFileNames() failed! Reason = %s", err)
+		_, _ = fmt.Fprintf(os.Stderr, "scanDirectoryForFileNames() failed! Reason = %s\n", err)
 		os.Exit(1)
 	}
 
 	fileNames = removeExistingFiles(db, fileNames)
 
+	fmt.Printf("found %d new files...\n", len(fileNames))
+
 	files := generateFilesFromFileNames(fileNames)
 	for _, file := range files {
+		fmt.Printf("generating hash for %s...\n", file.Path)
 		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
 		if err != nil {
 			// Failed to insert file, log and continue
-			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s", err)
+			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s\n", err)
 			continue
 		}
 	}
@@ -130,7 +189,7 @@ func removeExistingFiles(db *sql.DB, fileNames []string) []string {
 	for _, fileName := range fileNames {
 		ok, err := existsFile(db, fileName)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to check if file exists! Reason = %s", err)
+			_, _ = fmt.Fprintf(os.Stderr, "failed to check if file exists! Reason = %s\n", err)
 			continue
 		}
 		if !ok {
@@ -166,49 +225,32 @@ func verifyScanPathExists() string {
 
 	scanPath, err := filepath.Abs(os.Args[2])
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "invalid scan path")
+		_, _ = fmt.Fprintf(os.Stderr, "invalid scan path\n")
 		os.Exit(1)
 	}
 	if !verifyDirectoryExists(scanPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist")
+		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist\n")
 		os.Exit(1)
 	}
 
 	return scanPath
 }
 
-func verifyDatabaseExists() string {
-	dbPath, err := getDatabasePath()
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to get database path! Reason = %s\n", err)
-		os.Exit(1)
-	}
-
-	if !verifyFileExists(dbPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "database is missing in the current directory!\n")
-		os.Exit(1)
-	}
-	return dbPath
-}
-
 func createDatabaseMode() {
-	dbPath := verifyDatabaseExists()
+	if verifyFileExists(dbPath) {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to create database, file exists!\n")
+		os.Exit(1)
+	}
 
-	_, err := createDatabase(dbPath)
+	fmt.Printf("Creating database at : %s\n", dbPath)
+
+	db, err := createDatabase(dbPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to create database! Reason = %s\n", err)
 		os.Exit(1)
 	}
-}
 
-func getDatabasePath() (string, error) {
-	dbPath, err := filepath.Abs(".")
-	if err != nil {
-		return "", err
-	}
-
-	dbPath = path.Join(dbPath, databaseName)
-	return dbPath, err
+	_ = db.Close()
 }
 
 func printUsage() {
