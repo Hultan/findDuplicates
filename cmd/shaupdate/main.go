@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path"
-	"sort"
+	"path/filepath"
+	"regexp"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -22,11 +24,9 @@ const (
 	CompleteHash
 )
 
-var baseDir = "/home/per/temp/shrink/"
-var testDbFolder = "/home/per/code/shaupdate/test/walk"
-var testDbPath = "/home/per/code/shaupdate/test/data/test.db"
-var existsDbPath = "/home/per/code/shaupdate/test/data/exists.db"
-var notExistsDbPath = "/home/per/code/shaupdate/test/data/notExists.db"
+const (
+	testDbPath = "/home/per/code/shaupdate/test/data/test.db"
+)
 
 type File struct {
 	Path         string
@@ -34,50 +34,176 @@ type File struct {
 	HashPartial  string
 }
 
+// USAGE
+//
+//	shaupdate -d
+//		creates a database (files.db) in the current directory
+//	shaupdate [DBPATH] [SCANPATH] [-c|--check]
 func main() {
-	var db *sql.DB
-	var err error
-	if doesDbExist(testDbPath) {
-		db = openDatabase(testDbPath)
-	} else {
-		db, err = createDatabase(testDbPath)
+	if len(os.Args) <= 1 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "-d":
+		// Create a files.db database
+		createDatabaseMode()
+	case "-p":
+		// Scan directory and create partial hashes for new files
+		partialHashMode()
+	case "-c":
+		// Create complete hashes for duplicates
+		completeHashMode()
+	case "-lp":
+		// List all duplicate hashes (based on partial hash)
+		listDuplicatesMode(PartialHash)
+	case "-lc":
+		// List all duplicate hashes (based on complete hash)
+		listDuplicatesMode(CompleteHash)
+	default:
+		printUsage()
+		os.Exit(1)
+	}
+
+	os.Exit(0)
+}
+
+func listDuplicatesMode(hash HashType) {
+	// findDuplicates(db)
+}
+
+func completeHashMode() {
+	// sort.Slice(
+	// 	files, func(i, j int) bool {
+	// 		return files[i].HashPartial < files[j].HashPartial
+	// 	},
+	// )
+	//
+	// var prev *File
+	// for _, file := range files {
+	// 	if prev == nil {
+	// 		prev = file
+	// 		continue
+	// 	}
+	//
+	// 	if prev.HashPartial == file.HashPartial {
+	// 		handleIdenticalFiles(prev, file)
+	// 	}
+	//
+	// 	prev = file
+	// }
+
+}
+
+func partialHashMode() {
+	dbPath := verifyDatabaseExists()
+	scanPath := verifyScanPathExists()
+
+	db := openDatabase(dbPath)
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
+
+	fileNames, err := scanDirectoryForFileNames(scanPath, ".go$")
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "scanDirectoryForFileNames() failed! Reason = %s", err)
+		os.Exit(1)
+	}
+
+	files := generateFilesFromFileNames(fileNames)
+	for _, file := range files {
+		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
+		if err != nil {
+			// Failed to insert file, log and continue
+			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s", err)
+			continue
+		}
+	}
+}
+
+func generateFilesFromFileNames(fileNames []string) []*File {
+	var files []*File
+
+	for _, fileName := range fileNames {
+		file := &File{Path: fileName}
+
+		hash, err := calculateHash(file.Path, PartialHash)
 		if err != nil {
 			panic(err)
 		}
-	}
-	fmt.Println(db)
+		file.HashPartial = hash
 
-	f, err := os.Open(baseDir)
+		files = append(files, file)
+	}
+	return files
+}
+
+func verifyScanPathExists() string {
+	if len(os.Args) <= 2 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	scanPath, err := filepath.Abs(os.Args[2])
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "invalid scan path")
+		os.Exit(1)
+	}
+	if !verifyDirectoryExists(scanPath) {
+		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist")
+		os.Exit(1)
 	}
 
-	fileNames, err := f.Readdirnames(-1)
+	return scanPath
+}
+
+func verifyDatabaseExists() string {
+	dbPath, err := getDatabasePath()
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to get database path! Reason = %s\n", err)
+		os.Exit(1)
 	}
 
-	files := getPartialHashes(fileNames)
-
-	sort.Slice(
-		files, func(i, j int) bool {
-			return files[i].HashPartial < files[j].HashPartial
-		},
-	)
-
-	var prev *File
-	for _, file := range files {
-		if prev == nil {
-			prev = file
-			continue
-		}
-
-		if prev.HashPartial == file.HashPartial {
-			handleIdenticalFiles(prev, file)
-		}
-
-		prev = file
+	if !verifyFileExists(dbPath) {
+		_, _ = fmt.Fprintf(os.Stderr, "database is missing in the current directory!\n")
+		os.Exit(1)
 	}
+	return dbPath
+}
+
+func createDatabaseMode() {
+	dbPath := verifyDatabaseExists()
+
+	_, err := createDatabase(dbPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create database! Reason = %s\n", err)
+		os.Exit(1)
+	}
+}
+
+func getDatabasePath() (string, error) {
+	dbPath, err := filepath.Abs(".")
+	if err != nil {
+		return "", err
+	}
+
+	dbPath = path.Join(dbPath, databaseName)
+	return dbPath, err
+}
+
+func printUsage() {
+	_, _ = fmt.Fprintf(os.Stderr, "\nUSAGE:\n\n")
+	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -d\n")
+	_, _ = fmt.Fprintf(os.Stderr, "        creates a files.db in the current directory\n")
+	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -p [SCANPATH]\n")
+	_, _ = fmt.Fprintf(os.Stderr, "        creates partial hashes for all files in SCANPATH\n")
+	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -c\n")
+	_, _ = fmt.Fprintf(os.Stderr, "        creates complete hashes for all duplicate files in the database\n")
+	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -lp\n")
+	_, _ = fmt.Fprintf(os.Stderr, "        list all duplicates in database (partial hash)\n")
+	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -lc\n")
+	_, _ = fmt.Fprintf(os.Stderr, "        list all duplicates in database (complete hash)\n")
 }
 
 func handleIdenticalFiles(prev *File, file *File) {
@@ -99,23 +225,6 @@ func assertCompleteHash(file *File) {
 		}
 		file.HashComplete = hash
 	}
-}
-
-func getPartialHashes(fileNames []string) []*File {
-	var files []*File
-
-	for _, fileName := range fileNames {
-		file := &File{Path: path.Join(baseDir, fileName)}
-
-		hash, err := calculateHash(file.Path, PartialHash)
-		if err != nil {
-			panic(err)
-		}
-		file.HashPartial = hash
-
-		files = append(files, file)
-	}
-	return files
 }
 
 func calculateHash(filePath string, hashType HashType) (string, error) {
@@ -147,4 +256,32 @@ func calculateHash(filePath string, hashType HashType) (string, error) {
 		}
 		return fmt.Sprintf("%x", sha256.Sum256(b[0:n])), nil
 	}
+}
+
+func scanDirectoryForFileNames(dir, pattern string) ([]string, error) {
+	result := []string{}
+
+	err := filepath.WalkDir(
+		dir, func(s string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() {
+				ok, err := regexp.Match(pattern, []byte(s))
+				if err != nil {
+					return err
+				}
+				if ok {
+					result = append(result, s)
+				}
+			}
+			return nil
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }

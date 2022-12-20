@@ -6,6 +6,8 @@ import (
 	"os"
 )
 
+const databaseName = "files.db"
+
 func doesDbExist(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
@@ -23,7 +25,6 @@ func openDatabase(dbPath string) *sql.DB {
 }
 
 func createDatabase(dbPath string) (*sql.DB, error) {
-
 	db, err := sql.Open("sqlite3", dbPath)
 
 	if err != nil {
@@ -58,22 +59,6 @@ ON files (hashPartial);
 `
 	_, err := db.Exec(sts)
 
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func insertFile(db *sql.DB, filePath string) error {
-	SQL := "INSERT INTO files(filePath) VALUES(?);"
-
-	stm, err := db.Prepare(SQL)
-	if err != nil {
-		return err
-	}
-
-	_, err = stm.Exec(filePath)
 	if err != nil {
 		return err
 	}
@@ -130,25 +115,6 @@ func getFile(db *sql.DB, filePath string) (*File, error) {
 		HashComplete: complete.String,
 		HashPartial:  partial.String,
 	}, nil
-}
-
-func updatePartialHash(db *sql.DB, filePath string, hash string) error {
-	SQL := "UPDATE files SET hashPartial=? WHERE filePath=?;"
-
-	stm, err := db.Prepare(SQL)
-	if err != nil {
-		return err
-	}
-	defer func(stm *sql.Stmt) {
-		_ = stm.Close()
-	}(stm)
-
-	_, err = stm.Exec(hash, filePath)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func updateCompleteHash(db *sql.DB, filePath string, hash string) error {

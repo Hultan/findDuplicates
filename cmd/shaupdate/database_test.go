@@ -4,10 +4,15 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"reflect"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+)
+
+const (
+	testDbFolder    = "/home/per/code/shaupdate/test/walk"
+	existsDbPath    = "/home/per/code/shaupdate/test/data/exists.db"
+	notExistsDbPath = "/home/per/code/shaupdate/test/data/notExists.db"
 )
 
 func Test_doesDbExist(t *testing.T) {
@@ -54,19 +59,7 @@ func Test_createDatabase(t *testing.T) {
 	}()
 
 	const tempPath = "/home/per/temp/test.txt"
-	err = insertFile(db, tempPath)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	err = updatePartialHash(db, tempPath, "partial hash 123")
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	err = updateCompleteHash(db, tempPath, "complete hash 123")
+	err = insertFileWithHash(db, tempPath, "partial hash 123", "complete hash 123")
 	if err != nil {
 		t.Error(err)
 		return
@@ -131,33 +124,5 @@ func Test_findDuplicates(t *testing.T) {
 
 	for _, file := range dup {
 		fmt.Println(file.Path, file.HashPartial, file.HashComplete)
-	}
-}
-
-func Test_getFilesInPath(t *testing.T) {
-	type args struct {
-		dir     string
-		pattern string
-	}
-	tests := []struct {
-		name string
-		args args
-		want []string
-	}{
-		{"empty folder", args{"/home/per/temp/empty_folder", ".go$"}, []string{}},
-		{"test folder", args{testDbFolder, ".go$"}, []string{"/home/per/code/shaupdate/test/walk/walk.go"}},
-	}
-	for _, tt := range tests {
-		t.Run(
-			tt.name, func(t *testing.T) {
-				got, err := scanPath(tt.args.dir, tt.args.pattern)
-				if err != nil {
-					t.Errorf("scanPath() returned an error : %v", err)
-				}
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("scanPath() = %v, want %v", got, tt.want)
-				}
-			},
-		)
 	}
 }
