@@ -1,6 +1,6 @@
-## SHAUPDATE
+## FIND DUPLICATES
 
-Sha256sum files in a folder
+Finds duplicated files...
 
 # LINKS
 

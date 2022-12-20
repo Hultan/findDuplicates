@@ -16,7 +16,7 @@ func Test_scanDirectoryForFileNames(t *testing.T) {
 		want []string
 	}{
 		{"empty folder", args{emptyFolder, ".go$"}, []string{}},
-		{"test folder", args{testFolder, ".go$"}, []string{"/home/per/code/shaupdate/test/walk/walk.go"}},
+		{"test folder", args{testFolder, ".go$"}, []string{"/home/per/code/findDuplicates/test/walk/walk.go"}},
 	}
 	for _, tt := range tests {
 		t.Run(

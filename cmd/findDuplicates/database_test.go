@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	emptyFolder     = "/home/per/code/shaupdate/test/empty"
-	testFolder      = "/home/per/code/shaupdate/test/walk"
-	existsDbPath    = "/home/per/code/shaupdate/test/data/exists.db"
-	notExistsDbPath = "/home/per/code/shaupdate/test/data/notExists.db"
+	emptyFolder     = "/home/per/code/findDuplicates/test/empty"
+	testFolder      = "/home/per/code/findDuplicates/test/walk"
+	existsDbPath    = "/home/per/code/findDuplicates/test/data/exists.db"
+	notExistsDbPath = "/home/per/code/findDuplicates/test/data/notExists.db"
 )
 
 func Test_doesDbExist(t *testing.T) {

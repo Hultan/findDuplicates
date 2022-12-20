@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	testDbPath = "/home/per/code/shaupdate/test/data/test.db"
+	testDbPath = "/home/per/code/findDuplicates/test/data/test.db"
 )
 
 type File struct {
@@ -28,12 +28,20 @@ type File struct {
 
 const dbPath = "/home/per/files.db"
 
-// USAGE
-//
-//	shaupdate -d
-//		creates a database (files.db) in the current directory
-//	shaupdate [DBPATH] [SCANPATH] [-c|--check]
+var scanPath = ""
+
 func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("USAGE : findDuplicates [ScanPath]")
+		os.Exit(0)
+	}
+
+	scanPath = os.Args[1]
+	if !directoryExists(scanPath) {
+		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist, have you forgotten to mount the drive?\n")
+		os.Exit(1)
+	}
+
 	// Create a files.db database
 	createDatabaseMode()
 
@@ -80,8 +88,6 @@ func listDuplicatesMode() {
 }
 
 func partialHashMode() {
-	scanPath := verifyScanPathExists()
-
 	db := openDatabase(dbPath)
 	defer func(db *sql.DB) {
 		_ = db.Close()
@@ -122,16 +128,6 @@ func generateFilesFromFileNames(fileNames []string) []*File {
 		files = append(files, file)
 	}
 	return files
-}
-
-func verifyScanPathExists() string {
-	scanPath := "/media/x"
-	if !verifyDirectoryExists(scanPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist, don't forget to mount /media/x...\n")
-		os.Exit(1)
-	}
-
-	return scanPath
 }
 
 func createDatabaseMode() {

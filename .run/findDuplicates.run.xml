@@ -1,11 +1,11 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="shaupdate" type="GoApplicationRunConfiguration" factoryName="Go Application">
-    <module name="shaupdate" />
+  <configuration default="false" name="findDuplicates" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="findDuplicates" />
     <working_directory value="$PROJECT_DIR$" />
     <parameters value="-lp" />
     <kind value="DIRECTORY" />
     <package value="shaupdate" />
-    <directory value="$PROJECT_DIR$/cmd/shaupdate" />
+    <directory value="$PROJECT_DIR$/cmd/findDuplicates" />
     <filePath value="$PROJECT_DIR$/cmd/shaupdate/main.go" />
     <output_directory value="$PROJECT_DIR$/build" />
     <method v="2" />
