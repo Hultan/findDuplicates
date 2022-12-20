@@ -111,6 +111,8 @@ func partialHashMode() {
 		os.Exit(1)
 	}
 
+	fileNames = removeExistingFiles(db, fileNames)
+
 	files := generateFilesFromFileNames(fileNames)
 	for _, file := range files {
 		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
@@ -120,6 +122,23 @@ func partialHashMode() {
 			continue
 		}
 	}
+}
+
+func removeExistingFiles(db *sql.DB, fileNames []string) []string {
+	var result []string
+
+	for _, fileName := range fileNames {
+		ok, err := existsFile(db, fileName)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to check if file exists! Reason = %s", err)
+			continue
+		}
+		if !ok {
+			result = append(result, fileName)
+		}
+	}
+
+	return result
 }
 
 func generateFilesFromFileNames(fileNames []string) []*File {

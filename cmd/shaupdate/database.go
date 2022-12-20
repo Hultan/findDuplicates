@@ -82,6 +82,36 @@ func insertFileWithHash(db *sql.DB, filePath, partialHash, completeHash string) 
 	return nil
 }
 
+func existsFile(db *sql.DB, filePath string) (bool, error) {
+	SQL := "SELECT EXISTS(SELECT 1 FROM files WHERE filePath=?);"
+
+	stm, err := db.Prepare(SQL)
+	if err != nil {
+		return false, err
+	}
+	defer func(stm *sql.Stmt) {
+		_ = stm.Close()
+	}(stm)
+
+	rows, err := stm.Query(filePath)
+	if err != nil {
+		return false, err
+	}
+	defer func(rows *sql.Rows) {
+		_ = rows.Close()
+	}(rows)
+
+	rows.Next()
+	var exists bool
+
+	err = rows.Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
 func getFile(db *sql.DB, filePath string) (*File, error) {
 	SQL := "SELECT filePath, hashPartial, hashComplete FROM files WHERE filePath=?;"
 
