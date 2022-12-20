@@ -7,15 +7,12 @@ import (
 	"os"
 )
 
-const databaseName = "files.db"
-
 func doesDbExist(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
 }
 
 func openDatabase(dbPath string) *sql.DB {
-
 	db, err := sql.Open("sqlite3", dbPath)
 
 	if err != nil {
@@ -82,36 +79,6 @@ func insertFileWithHash(db *sql.DB, filePath, partialHash, completeHash string) 
 	return nil
 }
 
-func existsFile(db *sql.DB, filePath string) (bool, error) {
-	SQL := "SELECT EXISTS(SELECT 1 FROM files WHERE filePath=?);"
-
-	stm, err := db.Prepare(SQL)
-	if err != nil {
-		return false, err
-	}
-	defer func(stm *sql.Stmt) {
-		_ = stm.Close()
-	}(stm)
-
-	rows, err := stm.Query(filePath)
-	if err != nil {
-		return false, err
-	}
-	defer func(rows *sql.Rows) {
-		_ = rows.Close()
-	}(rows)
-
-	rows.Next()
-	var exists bool
-
-	err = rows.Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-
-	return exists, nil
-}
-
 func getFile(db *sql.DB, filePath string) (*File, error) {
 	SQL := "SELECT filePath, hashPartial, hashComplete FROM files WHERE filePath=?;"
 
@@ -147,25 +114,6 @@ func getFile(db *sql.DB, filePath string) (*File, error) {
 	}, nil
 }
 
-func updateCompleteHash(db *sql.DB, filePath string, hash string) error {
-	SQL := "UPDATE files SET hashComplete=? WHERE filePath=?;"
-
-	stm, err := db.Prepare(SQL)
-	if err != nil {
-		return err
-	}
-	defer func(stm *sql.Stmt) {
-		_ = stm.Close()
-	}(stm)
-
-	_, err = stm.Exec(hash, filePath)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func findDuplicatePartialHashes(db *sql.DB) ([]*File, error) {
 	SQL := `
 SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
@@ -175,22 +123,6 @@ SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
 	HAVING COUNT(*) > 1
 );
 `
-	return findDuplicates(db, SQL)
-}
-
-func findDuplicateCompleteHashes(db *sql.DB) ([]*File, error) {
-	SQL := `
-SELECT filePath, hashPartial, hashComplete FROM files WHERE hashComplete <> "" AND hashComplete in (
-	SELECT hashComplete
-	FROM files
-	GROUP BY hashComplete
-	HAVING COUNT(*) > 1
-);
-`
-	return findDuplicates(db, SQL)
-}
-
-func findDuplicates(db *sql.DB, SQL string) ([]*File, error) {
 	stm, err := db.Prepare(SQL)
 	if err != nil {
 		return nil, err

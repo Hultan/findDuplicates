@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	testDbFolder    = "/home/per/code/shaupdate/test/walk"
+	emptyFolder     = "/home/per/code/shaupdate/test/empty"
+	testFolder      = "/home/per/code/shaupdate/test/walk"
 	existsDbPath    = "/home/per/code/shaupdate/test/data/exists.db"
 	notExistsDbPath = "/home/per/code/shaupdate/test/data/notExists.db"
 )

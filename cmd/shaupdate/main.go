@@ -16,13 +16,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type HashType int
-
-const (
-	PartialHash HashType = iota
-	CompleteHash
-)
-
 const (
 	testDbPath = "/home/per/code/shaupdate/test/data/test.db"
 )
@@ -41,72 +34,28 @@ const dbPath = "/home/per/files.db"
 //		creates a database (files.db) in the current directory
 //	shaupdate [DBPATH] [SCANPATH] [-c|--check]
 func main() {
-	if len(os.Args) <= 1 {
-		printUsage()
-		os.Exit(1)
-	}
+	// Create a files.db database
+	createDatabaseMode()
 
-	switch os.Args[1] {
-	case "-d":
-		// Create a files.db database
-		createDatabaseMode()
-	case "-p":
-		// Scan directory and create partial hashes for new files
-		partialHashMode()
-	case "-c":
-		// Create complete hashes for duplicates
-		completeHashMode()
-	case "-lp":
-		// List all duplicate hashes (based on partial hash)
-		listDuplicatesMode(PartialHash)
-	case "-lc":
-		// List all duplicate hashes (based on complete hash)
-		listDuplicatesMode(CompleteHash)
-	default:
-		printUsage()
-		os.Exit(1)
-	}
+	// Scan directory and create partial hashes for new files
+	partialHashMode()
 
-	os.Exit(0)
+	// List all duplicate hashes (based on partial hash)
+	listDuplicatesMode()
+
+	// Delete database, we start with a new database every time
+	deleteDatabase()
 }
 
-func listDuplicatesMode(hashMode HashType) {
-	db := openDatabase(dbPath)
-	defer func(db *sql.DB) {
-		_ = db.Close()
-	}(db)
-
-	var mode string
-	var err error
-	var dup []*File
-
-	if hashMode == PartialHash {
-		mode = "partial"
-		dup, err = findDuplicatePartialHashes(db)
-	} else {
-		mode = "complete"
-		dup, err = findDuplicateCompleteHashes(db)
-	}
-
+func deleteDatabase() {
+	err := os.Remove(dbPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates (%s) ! Reason = %s", mode, err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to remove database at %s...", dbPath)
 		os.Exit(1)
-	}
-
-	fmt.Println()
-	fmt.Println("============================")
-	fmt.Printf(" Duplicates (mode=%s)\n", mode)
-	fmt.Println("============================")
-	for _, file := range dup {
-		if hashMode == PartialHash {
-			fmt.Printf("%s\t%s\n", file.HashPartial, file.Path)
-		} else {
-			fmt.Printf("%s\t%s\n", file.HashComplete, file.Path)
-		}
 	}
 }
 
-func completeHashMode() {
+func listDuplicatesMode() {
 	db := openDatabase(dbPath)
 	defer func(db *sql.DB) {
 		_ = db.Close()
@@ -114,43 +63,20 @@ func completeHashMode() {
 
 	dup, err := findDuplicatePartialHashes(db)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates (partial) ! Reason = %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates! Reason = %s", err)
 		os.Exit(1)
 	}
 
-	hash := ""
+	fmt.Println()
+	fmt.Println("============")
+	fmt.Println(" Duplicates ")
+	fmt.Println("============")
+	fmt.Println()
+	fmt.Printf("%d duplicates found...\n", len(dup))
+	fmt.Println()
 	for _, file := range dup {
-		hash, err = calculateHash(file.Path, CompleteHash)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to calculate complete hash for file '%s' ! Reason = %s\n", file.Path, err)
-			continue
-		}
-		err = updateCompleteHash(db, file.Path, hash)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to update complete hash for file '%s' ! Reason = %s\n", file.Path, err)
-			continue
-		}
+		fmt.Printf("%s\t%s\n", file.HashPartial, file.Path)
 	}
-	// sort.Slice(
-	// 	files, func(i, j int) bool {
-	// 		return files[i].HashPartial < files[j].HashPartial
-	// 	},
-	// )
-	//
-	// var prev *File
-	// for _, file := range files {
-	// 	if prev == nil {
-	// 		prev = file
-	// 		continue
-	// 	}
-	//
-	// 	if prev.HashPartial == file.HashPartial {
-	// 		handleIdenticalFiles(prev, file)
-	// 	}
-	//
-	// 	prev = file
-	// }
-
 }
 
 func partialHashMode() {
@@ -161,13 +87,11 @@ func partialHashMode() {
 		_ = db.Close()
 	}(db)
 
-	fileNames, err := scanDirectoryForFileNames(scanPath, ".mp4$")
+	fileNames, err := scanDirectoryForFileNames(scanPath, "(.avi|.AVI|.mkv|.mp4|.MP4|.mpg|.wmv)$")
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "scanDirectoryForFileNames() failed! Reason = %s\n", err)
 		os.Exit(1)
 	}
-
-	fileNames = removeExistingFiles(db, fileNames)
 
 	fmt.Printf("found %d new files...\n", len(fileNames))
 
@@ -183,30 +107,13 @@ func partialHashMode() {
 	}
 }
 
-func removeExistingFiles(db *sql.DB, fileNames []string) []string {
-	var result []string
-
-	for _, fileName := range fileNames {
-		ok, err := existsFile(db, fileName)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "failed to check if file exists! Reason = %s\n", err)
-			continue
-		}
-		if !ok {
-			result = append(result, fileName)
-		}
-	}
-
-	return result
-}
-
 func generateFilesFromFileNames(fileNames []string) []*File {
 	var files []*File
 
 	for _, fileName := range fileNames {
 		file := &File{Path: fileName}
 
-		hash, err := calculateHash(file.Path, PartialHash)
+		hash, err := calculateHash(file.Path)
 		if err != nil {
 			panic(err)
 		}
@@ -218,18 +125,9 @@ func generateFilesFromFileNames(fileNames []string) []*File {
 }
 
 func verifyScanPathExists() string {
-	if len(os.Args) <= 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	scanPath, err := filepath.Abs(os.Args[2])
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "invalid scan path\n")
-		os.Exit(1)
-	}
+	scanPath := "/media/x"
 	if !verifyDirectoryExists(scanPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist\n")
+		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist, don't forget to mount /media/x...\n")
 		os.Exit(1)
 	}
 
@@ -237,11 +135,6 @@ func verifyScanPathExists() string {
 }
 
 func createDatabaseMode() {
-	if verifyFileExists(dbPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to create database, file exists!\n")
-		os.Exit(1)
-	}
-
 	fmt.Printf("Creating database at : %s\n", dbPath)
 
 	db, err := createDatabase(dbPath)
@@ -253,42 +146,7 @@ func createDatabaseMode() {
 	_ = db.Close()
 }
 
-func printUsage() {
-	_, _ = fmt.Fprintf(os.Stderr, "\nUSAGE:\n\n")
-	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -d\n")
-	_, _ = fmt.Fprintf(os.Stderr, "        creates a files.db in the current directory\n")
-	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -p [SCANPATH]\n")
-	_, _ = fmt.Fprintf(os.Stderr, "        creates partial hashes for all files in SCANPATH\n")
-	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -c\n")
-	_, _ = fmt.Fprintf(os.Stderr, "        creates complete hashes for all duplicate files in the database\n")
-	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -lp\n")
-	_, _ = fmt.Fprintf(os.Stderr, "        list all duplicates in database (partial hash)\n")
-	_, _ = fmt.Fprintf(os.Stderr, "shaupdate -lc\n")
-	_, _ = fmt.Fprintf(os.Stderr, "        list all duplicates in database (complete hash)\n")
-}
-
-func handleIdenticalFiles(prev *File, file *File) {
-	assertCompleteHash(prev)
-	assertCompleteHash(file)
-	if prev.HashComplete == file.HashComplete {
-		fmt.Println("Found identical files:")
-		fmt.Printf("%s\t%s\n", prev.HashComplete, prev.Path)
-		fmt.Printf("%s\t%s\n", file.HashComplete, file.Path)
-		fmt.Println()
-	}
-}
-
-func assertCompleteHash(file *File) {
-	if file.HashComplete == "" {
-		hash, err := calculateHash(file.Path, CompleteHash)
-		if err != nil {
-			panic(err)
-		}
-		file.HashComplete = hash
-	}
-}
-
-func calculateHash(filePath string, hashType HashType) (string, error) {
+func calculateHash(filePath string) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		log.Fatal(err)
@@ -299,24 +157,16 @@ func calculateHash(filePath string, hashType HashType) (string, error) {
 		}
 	}()
 
-	if hashType == CompleteHash {
-		hash := sha256.New()
-		if _, err = io.Copy(hash, f); err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%x", hash.Sum(nil)), nil
-	} else {
-		r := bufio.NewReader(f)
-		b := make([]byte, 2048)
-		n, err := r.Read(b)
-		if err == io.EOF {
-			return "", errors.New("file is empty")
-		}
-		if err != nil {
-			return "", err
-		}
-		return fmt.Sprintf("%x", sha256.Sum256(b[0:n])), nil
+	r := bufio.NewReader(f)
+	b := make([]byte, 65536)
+	n, err := r.Read(b)
+	if err == io.EOF {
+		return "", errors.New("file is empty")
 	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(b[0:n])), nil
 }
 
 func scanDirectoryForFileNames(dir, pattern string) ([]string, error) {

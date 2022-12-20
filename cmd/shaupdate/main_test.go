@@ -15,8 +15,8 @@ func Test_scanDirectoryForFileNames(t *testing.T) {
 		args args
 		want []string
 	}{
-		{"empty folder", args{"/home/per/temp/empty_folder", ".go$"}, []string{}},
-		{"test folder", args{testDbFolder, ".go$"}, []string{"/home/per/code/shaupdate/test/walk/walk.go"}},
+		{"empty folder", args{emptyFolder, ".go$"}, []string{}},
+		{"test folder", args{testFolder, ".go$"}, []string{"/home/per/code/shaupdate/test/walk/walk.go"}},
 	}
 	for _, tt := range tests {
 		t.Run(

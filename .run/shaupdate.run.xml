@@ -2,7 +2,7 @@
   <configuration default="false" name="shaupdate" type="GoApplicationRunConfiguration" factoryName="Go Application">
     <module name="shaupdate" />
     <working_directory value="$PROJECT_DIR$" />
-    <parameters value="-p /media/x/nvr/sorted/special_" />
+    <parameters value="-lp" />
     <kind value="DIRECTORY" />
     <package value="shaupdate" />
     <directory value="$PROJECT_DIR$/cmd/shaupdate" />
