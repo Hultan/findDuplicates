@@ -2,7 +2,7 @@ package main
 
 import (
 	"bufio"
-	"crypto/sha256"
+	"crypto/md5"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -33,37 +34,78 @@ var scanPath = ""
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("USAGE : findDuplicates [ScanPath]")
+		fmt.Println("See Obsidian for how to mount drives...")
 		os.Exit(0)
 	}
 
 	scanPath = os.Args[1]
 	if !directoryExists(scanPath) {
-		_, _ = fmt.Fprintf(os.Stderr, "scan path does not exist, have you forgotten to mount the drive?\n")
+		msg := "scan path does not exist, have you forgotten to mount the drive? See Obsidian...\n"
+		_, _ = fmt.Fprintf(os.Stderr, msg)
 		os.Exit(1)
 	}
 
 	// Create a files.db database
-	createDatabaseMode()
+	createDatabaseStep()
 
 	// Scan directory and create partial hashes for new files
-	partialHashMode()
+	partialHashStep()
 
 	// List all duplicate hashes (based on partial hash)
-	listDuplicatesMode()
+	listDuplicatesStep()
 
 	// Delete database, we start with a new database every time
-	deleteDatabase()
+	deleteDatabaseStep()
 }
 
-func deleteDatabase() {
-	err := os.Remove(dbPath)
+func createDatabaseStep() {
+	fmt.Printf("Creating database at : %s\n\n", dbPath)
+
+	db, err := createDatabase(dbPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to remove database at %s...", dbPath)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to create database! Reason = %s\n", err)
 		os.Exit(1)
 	}
+
+	_ = db.Close()
+}
+func partialHashStep() {
+	db := openDatabase(dbPath)
+	defer func(db *sql.DB) {
+		_ = db.Close()
+	}(db)
+
+	start := time.Now()
+	fmt.Println("Scanning directory...")
+	fileNames, err := scanDirectory(scanPath, "(.avi|.AVI|.mkv|.mp4|.MP4|.mpg|.wmv)$")
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "scanDirectory() failed! Reason = %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Scan result : found %d files (%s).\n\n", len(fileNames), time.Since(start).String())
+
+	start = time.Now()
+	fmt.Println("Generating hashes...")
+	files, count := generatingHashes(fileNames)
+	fmt.Printf("Generate result : generated hashes for %d files (%s).\n\n", count, time.Since(start).String())
+
+	start = time.Now()
+	fmt.Println("Inserting hashes into db...")
+	count = 0
+	for _, file := range files {
+		// fmt.Printf("generating hash for %s...\n", file.Path)
+		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
+		if err != nil {
+			// Failed to insert file, log and continue
+			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s\n", err)
+			continue
+		}
+		count++
+	}
+	fmt.Printf("Insert result : inserted hashes for %d files (%s).\n", count, time.Since(start).String())
 }
 
-func listDuplicatesMode() {
+func listDuplicatesStep() {
 	db := openDatabase(dbPath)
 	defer func(db *sql.DB) {
 		_ = db.Close()
@@ -87,85 +129,16 @@ func listDuplicatesMode() {
 	}
 }
 
-func partialHashMode() {
-	db := openDatabase(dbPath)
-	defer func(db *sql.DB) {
-		_ = db.Close()
-	}(db)
-
-	fileNames, err := scanDirectoryForFileNames(scanPath, "(.avi|.AVI|.mkv|.mp4|.MP4|.mpg|.wmv)$")
+func deleteDatabaseStep() {
+	err := os.Remove(dbPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "scanDirectoryForFileNames() failed! Reason = %s\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to remove database at %s...", dbPath)
 		os.Exit(1)
 	}
-
-	fmt.Printf("found %d new files...\n", len(fileNames))
-
-	files := generateFilesFromFileNames(fileNames)
-	for _, file := range files {
-		fmt.Printf("generating hash for %s...\n", file.Path)
-		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
-		if err != nil {
-			// Failed to insert file, log and continue
-			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s\n", err)
-			continue
-		}
-	}
 }
 
-func generateFilesFromFileNames(fileNames []string) []*File {
-	var files []*File
-
-	for _, fileName := range fileNames {
-		file := &File{Path: fileName}
-
-		hash, err := calculateHash(file.Path)
-		if err != nil {
-			panic(err)
-		}
-		file.HashPartial = hash
-
-		files = append(files, file)
-	}
-	return files
-}
-
-func createDatabaseMode() {
-	fmt.Printf("Creating database at : %s\n", dbPath)
-
-	db, err := createDatabase(dbPath)
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Failed to create database! Reason = %s\n", err)
-		os.Exit(1)
-	}
-
-	_ = db.Close()
-}
-
-func calculateHash(filePath string) (string, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		if err = f.Close(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	r := bufio.NewReader(f)
-	b := make([]byte, 65536)
-	n, err := r.Read(b)
-	if err == io.EOF {
-		return "", errors.New("file is empty")
-	}
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", sha256.Sum256(b[0:n])), nil
-}
-
-func scanDirectoryForFileNames(dir, pattern string) ([]string, error) {
+func scanDirectory(dir, pattern string) ([]string, error) {
+	// Needs to be declared like this (and not nil slice) for test to work
 	result := []string{}
 
 	err := filepath.WalkDir(
@@ -191,4 +164,51 @@ func scanDirectoryForFileNames(dir, pattern string) ([]string, error) {
 	}
 
 	return result, nil
+}
+
+func generatingHashes(fileNames []string) ([]*File, int) {
+	var files []*File
+	gen := 0
+
+	// For each file, calculate hash and generate a File{} struct
+	for _, fileName := range fileNames {
+		file := &File{Path: fileName}
+
+		hash, err := calculateHash(file.Path)
+		if err != nil {
+			panic(err)
+		}
+		file.HashPartial = hash
+
+		files = append(files, file)
+		gen++
+	}
+	return files, gen
+}
+
+func calculateHash(filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err = f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	// Read the first 64k of the file
+	r := bufio.NewReader(f)
+	b := make([]byte, 65536)
+	n, err := r.Read(b)
+	if err == io.EOF {
+		return "", errors.New("file is empty")
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// Return MD5 hash of the file
+	m := md5.New()
+	return fmt.Sprintf("%x", m.Sum(b[0:n])), nil
 }

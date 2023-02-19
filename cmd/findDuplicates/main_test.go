@@ -21,12 +21,12 @@ func Test_scanDirectoryForFileNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(
 			tt.name, func(t *testing.T) {
-				got, err := scanDirectoryForFileNames(tt.args.dir, tt.args.pattern)
+				got, err := scanDirectory(tt.args.dir, tt.args.pattern)
 				if err != nil {
-					t.Errorf("scanDirectoryForFileNames() returned an error : %v", err)
+					t.Errorf("scanDirectory() returned an error : %v", err)
 				}
 				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("scanDirectoryForFileNames() = %v, want %v", got, tt.want)
+					t.Errorf("scanDirectory() = %v, want %v", got, tt.want)
 				}
 			},
 		)

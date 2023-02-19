@@ -2,7 +2,6 @@
   <configuration default="false" name="findDuplicates" type="GoApplicationRunConfiguration" factoryName="Go Application">
     <module name="findDuplicates" />
     <working_directory value="$PROJECT_DIR$" />
-    <parameters value="-lp" />
     <kind value="DIRECTORY" />
     <package value="shaupdate" />
     <directory value="$PROJECT_DIR$/cmd/findDuplicates" />
