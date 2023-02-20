@@ -4,7 +4,7 @@ Finds duplicated files in a directory (recursively)...
 
 # LINKS
 
+* Based on : https://github.com/matt4biz/go-class-walk
+
 # TODO
 
-* Move database to temp directory
-* Parameter for controlling size of hash (64k,full, etc)
