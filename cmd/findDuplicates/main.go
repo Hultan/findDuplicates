@@ -32,17 +32,9 @@ const dbPath = "/home/per/files.db"
 var scanPath = ""
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("USAGE : findDuplicates [ScanPath]")
-		fmt.Println("See Obsidian for how to mount drives...")
-		os.Exit(0)
-	}
-
-	scanPath = os.Args[1]
-	if !directoryExists(scanPath) {
-		msg := "scan path does not exist, have you forgotten to mount the drive? See Obsidian...\n"
-		_, _ = fmt.Fprintf(os.Stderr, msg)
-		os.Exit(1)
+	code, ok := validateArgs()
+	if !ok {
+		os.Exit(code)
 	}
 
 	// Create a files.db database
@@ -58,6 +50,23 @@ func main() {
 	deleteDatabaseStep()
 }
 
+func validateArgs() (int, bool) {
+	if len(os.Args) != 2 {
+		fmt.Println("USAGE : findDuplicates [ScanPath]")
+		fmt.Println("See Obsidian for how to mount drives...")
+		return 0, false
+	}
+
+	scanPath = os.Args[1]
+	if !directoryExists(scanPath) {
+		msg := "scan path does not exist, have you forgotten to mount the drive? See Obsidian...\n"
+		_, _ = fmt.Fprintf(os.Stderr, msg)
+		return 1, false
+	}
+
+	return 0, true
+}
+
 func createDatabaseStep() {
 	fmt.Printf("Creating database at : %s\n\n", dbPath)
 
@@ -69,6 +78,7 @@ func createDatabaseStep() {
 
 	_ = db.Close()
 }
+
 func partialHashStep() {
 	db := openDatabase(dbPath)
 	defer func(db *sql.DB) {
