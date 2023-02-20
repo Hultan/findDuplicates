@@ -31,8 +31,7 @@ func createDatabase(dbPath string) (*sql.DB, error) {
 	sts := `
 CREATE TABLE files(
     filePath TEXT PRIMARY KEY,
-    hashPartial TEXT, 
-    hashComplete TEXT
+    hashPartial TEXT
 );
 `
 	_, err = db.Exec(sts)
@@ -63,15 +62,15 @@ ON files (hashPartial);
 	return nil
 }
 
-func insertFileWithHash(db *sql.DB, filePath, partialHash, completeHash string) error {
-	SQL := "INSERT INTO files(filePath,hashPartial, hashComplete) VALUES(?,?,?);"
+func insertFileWithHash(db *sql.DB, filePath, partialHash string) error {
+	SQL := "INSERT INTO files(filePath,hashPartial) VALUES(?,?,?);"
 
 	stm, err := db.Prepare(SQL)
 	if err != nil {
 		return err
 	}
 
-	_, err = stm.Exec(filePath, partialHash, completeHash)
+	_, err = stm.Exec(filePath, partialHash)
 	if err != nil {
 		return err
 	}
@@ -80,7 +79,7 @@ func insertFileWithHash(db *sql.DB, filePath, partialHash, completeHash string) 
 }
 
 func getFile(db *sql.DB, filePath string) (*File, error) {
-	SQL := "SELECT filePath, hashPartial, hashComplete FROM files WHERE filePath=?;"
+	SQL := "SELECT filePath, hashPartial FROM files WHERE filePath=?;"
 
 	stm, err := db.Prepare(SQL)
 	if err != nil {
@@ -108,15 +107,14 @@ func getFile(db *sql.DB, filePath string) (*File, error) {
 	}
 
 	return &File{
-		Path:         path,
-		HashComplete: complete.String,
-		HashPartial:  partial.String,
+		Path:        path,
+		HashPartial: partial.String,
 	}, nil
 }
 
 func findDuplicatePartialHashes(db *sql.DB) ([]*File, error) {
 	SQL := `
-SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
+SELECT filePath, hashPartial FROM files WHERE hashPartial in (
 	SELECT hashPartial
 	FROM files
 	GROUP BY hashPartial
@@ -152,9 +150,8 @@ SELECT filePath, hashPartial, hashComplete FROM files WHERE hashPartial in (
 
 		result = append(
 			result, &File{
-				Path:         path,
-				HashComplete: complete.String,
-				HashPartial:  partial.String,
+				Path:        path,
+				HashPartial: partial.String,
 			},
 		)
 	}

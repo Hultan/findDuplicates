@@ -22,9 +22,8 @@ const (
 )
 
 type File struct {
-	Path         string
-	HashComplete string
-	HashPartial  string
+	Path        string
+	HashPartial string
 }
 
 const dbPath = "/home/per/files.db"
@@ -104,7 +103,7 @@ func partialHashStep() {
 	count = 0
 	for _, file := range files {
 		// fmt.Printf("generating hash for %s...\n", file.Path)
-		err = insertFileWithHash(db, file.Path, file.HashPartial, file.HashComplete)
+		err = insertFileWithHash(db, file.Path, file.HashPartial)
 		if err != nil {
 			// Failed to insert file, log and continue
 			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s\n", err)
