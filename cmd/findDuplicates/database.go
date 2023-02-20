@@ -31,7 +31,7 @@ func createDatabase(dbPath string) (*sql.DB, error) {
 	sts := `
 CREATE TABLE files(
     filePath TEXT PRIMARY KEY,
-    hashPartial TEXT
+    hash TEXT
 );
 `
 	_, err = db.Exec(sts)
@@ -50,8 +50,8 @@ CREATE TABLE files(
 
 func createIndex(db *sql.DB) error {
 	sts := `
-CREATE INDEX IF NOT EXISTS idx_partial_hash 
-ON files (hashPartial);
+CREATE INDEX IF NOT EXISTS idx_hash 
+ON files (hash);
 `
 	_, err := db.Exec(sts)
 
@@ -62,15 +62,15 @@ ON files (hashPartial);
 	return nil
 }
 
-func insertFileWithHash(db *sql.DB, filePath, partialHash string) error {
-	SQL := "INSERT INTO files(filePath,hashPartial) VALUES(?,?,?);"
+func insertFileWithHash(db *sql.DB, filePath, hash string) error {
+	SQL := "INSERT INTO files(filePath,hash) VALUES(?,?);"
 
 	stm, err := db.Prepare(SQL)
 	if err != nil {
 		return err
 	}
 
-	_, err = stm.Exec(filePath, partialHash)
+	_, err = stm.Exec(filePath, hash)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func insertFileWithHash(db *sql.DB, filePath, partialHash string) error {
 }
 
 func getFile(db *sql.DB, filePath string) (*File, error) {
-	SQL := "SELECT filePath, hashPartial FROM files WHERE filePath=?;"
+	SQL := "SELECT filePath, hash FROM files WHERE filePath=?;"
 
 	stm, err := db.Prepare(SQL)
 	if err != nil {
@@ -99,25 +99,25 @@ func getFile(db *sql.DB, filePath string) (*File, error) {
 
 	rows.Next()
 	var path string
-	var partial, complete sql.NullString
+	var hash sql.NullString
 
-	err = rows.Scan(&path, &partial, &complete)
+	err = rows.Scan(&path, &hash)
 	if err != nil {
 		return nil, err
 	}
 
 	return &File{
-		Path:        path,
-		HashPartial: partial.String,
+		Path: path,
+		Hash: hash.String,
 	}, nil
 }
 
-func findDuplicatePartialHashes(db *sql.DB) ([]*File, error) {
+func findDuplicates(db *sql.DB) ([]*File, error) {
 	SQL := `
-SELECT filePath, hashPartial FROM files WHERE hashPartial in (
-	SELECT hashPartial
+SELECT filePath, hash FROM files WHERE hash in (
+	SELECT hash
 	FROM files
-	GROUP BY hashPartial
+	GROUP BY hash
 	HAVING COUNT(*) > 1
 );
 `
@@ -141,17 +141,17 @@ SELECT filePath, hashPartial FROM files WHERE hashPartial in (
 
 	for rows.Next() {
 		var path string
-		var partial, complete sql.NullString
+		var hash sql.NullString
 
-		err = rows.Scan(&path, &partial, &complete)
+		err = rows.Scan(&path, &hash)
 		if err != nil {
 			return nil, err
 		}
 
 		result = append(
 			result, &File{
-				Path:        path,
-				HashPartial: partial.String,
+				Path: path,
+				Hash: hash.String,
 			},
 		)
 	}

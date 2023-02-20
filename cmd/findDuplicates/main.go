@@ -22,8 +22,8 @@ const (
 )
 
 type File struct {
-	Path        string
-	HashPartial string
+	Path string
+	Hash string
 }
 
 const dbPath = "/home/per/files.db"
@@ -39,10 +39,10 @@ func main() {
 	// Create a files.db database
 	createDatabaseStep()
 
-	// Scan directory and create partial hashes for new files
-	partialHashStep()
+	// Scan directory and create hashes for the files
+	calculateHashStep()
 
-	// List all duplicate hashes (based on partial hash)
+	// List all duplicate hashes
 	listDuplicatesStep()
 
 	// Delete database, we start with a new database every time
@@ -78,7 +78,7 @@ func createDatabaseStep() {
 	_ = db.Close()
 }
 
-func partialHashStep() {
+func calculateHashStep() {
 	db := openDatabase(dbPath)
 	defer func(db *sql.DB) {
 		_ = db.Close()
@@ -103,7 +103,7 @@ func partialHashStep() {
 	count = 0
 	for _, file := range files {
 		// fmt.Printf("generating hash for %s...\n", file.Path)
-		err = insertFileWithHash(db, file.Path, file.HashPartial)
+		err = insertFileWithHash(db, file.Path, file.Hash)
 		if err != nil {
 			// Failed to insert file, log and continue
 			_, _ = fmt.Fprintf(os.Stderr, "failed to insert file inte database! Reason = %s\n", err)
@@ -120,7 +120,7 @@ func listDuplicatesStep() {
 		_ = db.Close()
 	}(db)
 
-	dup, err := findDuplicatePartialHashes(db)
+	dup, err := findDuplicates(db)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "failed to find duplicates! Reason = %s", err)
 		os.Exit(1)
@@ -134,7 +134,7 @@ func listDuplicatesStep() {
 	fmt.Printf("%d duplicates found...\n", len(dup))
 	fmt.Println()
 	for _, file := range dup {
-		fmt.Printf("%s\t%s\n", file.HashPartial, file.Path)
+		fmt.Printf("%s\t%s\n", file.Hash, file.Path)
 	}
 }
 
@@ -187,7 +187,7 @@ func generatingHashes(fileNames []string) ([]*File, int) {
 		if err != nil {
 			panic(err)
 		}
-		file.HashPartial = hash
+		file.Hash = hash
 
 		files = append(files, file)
 		gen++

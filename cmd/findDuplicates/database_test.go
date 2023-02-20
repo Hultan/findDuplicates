@@ -60,7 +60,7 @@ func Test_createDatabase(t *testing.T) {
 	}()
 
 	const tempPath = "/home/per/temp/test.txt"
-	err = insertFileWithHash(db, tempPath, "partial hash 123")
+	err = insertFileWithHash(db, tempPath, "hash 123")
 	if err != nil {
 		t.Error(err)
 		return
@@ -76,8 +76,8 @@ func Test_createDatabase(t *testing.T) {
 		t.Error("invalid path in getPath")
 		return
 	}
-	if file.HashPartial != "partial hash 123" {
-		t.Error("invalid partial hash in getPath")
+	if file.Hash != "hash 123" {
+		t.Error("invalid hash in getPath")
 		return
 	}
 }
@@ -113,13 +113,13 @@ func Test_findDuplicates(t *testing.T) {
 		return
 	}
 
-	dup, err := findDuplicatePartialHashes(db)
+	dup, err := findDuplicates(db)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
 	for _, file := range dup {
-		fmt.Println(file.Path, file.HashPartial)
+		fmt.Println(file.Path, file.Hash)
 	}
 }
